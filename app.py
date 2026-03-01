@@ -4,8 +4,8 @@ import cloudscraper
 import requests
 import time
 
-app = Flask(__name__)
-CORS(app)
+start = Flask(__name__)
+CORS(start)
 
 scraper = cloudscraper.create_scraper()
 
@@ -193,4 +193,4 @@ def viewers():
 # Запуск сервера
 # ==========================
 if __name__ == "__main__":
-    app.run()
+    start.run()
