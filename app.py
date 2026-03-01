@@ -141,7 +141,7 @@ def get_kick_viewers(username):
 # ==========================
 # Универсальный API маршрут
 # ==========================
-@app.route("/viewers")
+@start.route("/viewers")
 def viewers():
     username = request.args.get("username")
     platform = request.args.get("platform", "wtv")
@@ -195,4 +195,5 @@ def viewers():
 # ==========================
 if __name__ == "__main__":
     start.run()
+
 
