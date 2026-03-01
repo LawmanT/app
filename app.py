@@ -13,8 +13,8 @@ scraper = cloudscraper.create_scraper()
 # ==========================
 # Настройки кеша
 # ==========================
-CACHE_TTL = 15  # кеш на 15 секунд
-cache = {}      # кеш по username и платформе
+CACHE_TTL = 15  # кеш на 20 секунд
+cache = {}  # кеш по username и платформе
 
 
 # ==========================
@@ -103,38 +103,108 @@ def get_twitch_viewers(username):
 
 
 # ==========================
-# Kick функции
+# Kick функции (исправленные)
 # ==========================
 KICK_IDENTIFIER = os.getenv("KICK_IDENTIFIER")
 KICK_API_KEY = os.getenv("KICK_API_KEY")
+KICK_TOKEN = None
+KICK_TOKEN_EXPIRES = 0
+
+
+def get_kick_token():
+    """Получение токена доступа для Kick API через Client Credentials flow"""
+    global KICK_TOKEN, KICK_TOKEN_EXPIRES
+
+    # Проверяем, не истек ли текущий токен
+    if time.time() < KICK_TOKEN_EXPIRES and KICK_TOKEN:
+        return KICK_TOKEN
+
+    try:
+        # Правильный endpoint для токена Kick OAuth
+        url = "https://id.kick.com/oauth/token"
+
+        # Данные для получения токена (client credentials flow)
+        # Важно: Content-Type должен быть application/x-www-form-urlencoded
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": KICK_CLIENT_ID,
+            "client_secret": KICK_CLIENT_SECRET
+        }
+
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+
+        print(f"Запрос токена Kick к {url}")
+        r = requests.post(url, data=data, headers=headers, timeout=5)
+
+        print(f"Статус получения токена Kick: {r.status_code}")
+
+        if r.status_code != 200:
+            print(f"Ответ при ошибке токена: {r.text}")
+            return None
+
+        token_data = r.json()
+        KICK_TOKEN = token_data.get("access_token")
+        expires_in = token_data.get("expires_in", 3600)  # обычно 3600 секунд (1 час)
+        KICK_TOKEN_EXPIRES = time.time() + expires_in - 60  # запас в 60 секунд
+
+        print("Токен Kick успешно получен")
+        return KICK_TOKEN
+
+    except Exception as e:
+        print(f"Ошибка при получении токена Kick: {e}")
+        return None
 
 
 def get_kick_viewers(username):
     try:
-        url = f"https://api.kick.com/public/v1/channels/{username}"
+        # Получаем токен
+        token = get_kick_token()
+        if not token:
+            print("Не удалось получить токен Kick")
+            return 0
+
+        # Формируем запрос к API для получения информации о канале
+        # Используем параметр slug для поиска по имени пользователя
+        url = f"https://api.kick.com/public/v1/channels"
 
         headers = {
-            "Authorization": f"Bearer {KICK_IDENTIFIER}",
-            "X-Api-Key": KICK_API_KEY,
+            "Authorization": f"Bearer {token}",
             "Accept": "application/json"
         }
 
-        r = requests.get(url, headers=headers, timeout=5)
+        params = {
+            "slug": username.lower()  # Kick использует slug (обычно в нижнем регистре)
+        }
+
+        print(f"Запрос к Kick API: {url} с slug={username}")
+        r = requests.get(url, headers=headers, params=params, timeout=5)
+
+        print(f"Kick статус: {r.status_code}")
 
         if r.status_code != 200:
-            print("Kick статус:", r.status_code)
+            print(f"Ответ Kick при ошибке: {r.text}")
             return 0
 
         data = r.json()
-        livestream = data.get("data", {}).get("livestream")
 
-        if not livestream:
-            return 0
+        # Проверяем структуру ответа согласно документации Kick API [citation:1]
+        if "data" in data and len(data["data"]) > 0:
+            channel_data = data["data"][0]
 
-        return livestream.get("viewer_count", 0)
+            # Проверяем, есть ли информация о стриме
+            if "stream" in channel_data:
+                stream = channel_data["stream"]
+                # Проверяем, идет ли стрим
+                if stream.get("is_live", False):
+                    return stream.get("viewer_count", 0)
+
+        # Если стрим не найден или не активен
+        return 0
 
     except Exception as e:
-        print("Ошибка Kick:", e)
+        print(f"Ошибка Kick: {e}")
         return 0
 
 
@@ -152,6 +222,7 @@ def viewers():
     now = time.time()
     cache_key = f"{platform}:{username}"
 
+    # Проверка кеша
     if cache_key in cache:
         cached_time, cached_value = cache[cache_key]
         if now - cached_time < CACHE_TTL:
@@ -195,5 +266,3 @@ def viewers():
 # ==========================
 if __name__ == "__main__":
     start.run()
-
-
