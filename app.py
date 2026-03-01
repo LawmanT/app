@@ -127,8 +127,8 @@ def get_kick_token():
         # Важно: Content-Type должен быть application/x-www-form-urlencoded
         data = {
             "grant_type": "client_credentials",
-            "client_id": KICK_CLIENT_ID,
-            "client_secret": KICK_CLIENT_SECRET
+            "client_id": KICK_IDENTIFIER,  # Исправлено!
+            "client_secret": KICK_API_KEY  # Исправлено!
         }
 
         headers = {
@@ -266,3 +266,4 @@ def viewers():
 # ==========================
 if __name__ == "__main__":
     start.run()
+
