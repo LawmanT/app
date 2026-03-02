@@ -211,33 +211,65 @@ def get_kick_viewers(username):
 # ==========================
 # VK Video Live функции
 # ==========================
-def get_vk_viewers(slug):
-    try:
-        url = f"https://live.vkvideo.ru/api/web/channel/{slug}"
-        r = requests.get(url, timeout=5)
+VK_APP_ID = os.getenv("VK_APP_ID")          # Твой App ID
+VK_PUBLIC_KEY = os.getenv("VK_PUBLIC_KEY")  # Публичный ключ (не обязательно здесь)
+VK_SECRET_KEY = os.getenv("VK_SECRET_KEY")  # Секрет приложения
 
+VK_ACCESS_TOKEN = None
+VK_TOKEN_EXPIRES = 0
+
+def get_vk_app_token():
+    global VK_ACCESS_TOKEN, VK_TOKEN_EXPIRES
+
+    if VK_ACCESS_TOKEN and time.time() < VK_TOKEN_EXPIRES:
+        return VK_ACCESS_TOKEN
+
+    url = "https://oauth.vk.com/access_token"
+    params = {
+        "client_id": VK_APP_ID,
+        "client_secret": VK_SECRET_KEY,
+        "v": "5.199",
+        "grant_type": "client_credentials"
+    }
+
+    r = requests.get(url, params=params, timeout=5)
+    data = r.json()
+
+    VK_ACCESS_TOKEN = data.get("access_token")
+    expires_in = data.get("expires_in", 3600)
+    VK_TOKEN_EXPIRES = time.time() + expires_in - 60
+    return VK_ACCESS_TOKEN
+
+def get_vk_viewers(slug):
+    """
+    Получает количество зрителей VK Video Live через Dev API.
+    slug — идентификатор канала из URL, например 'jove'
+    """
+    try:
+        token = get_vk_app_token()
+        if not token:
+            return 0
+
+        url = f"https://dev.live.vkvideo.ru/api/v2/channel/info"
+        headers = {"Authorization": f"Bearer {token}"}
+        params = {"slug": slug}
+
+        r = requests.get(url, headers=headers, params=params, timeout=5)
         if r.status_code != 200:
-            print(f"VK Live статус {r.status_code} для {slug}")
+            print(f"VK API ошибка {r.status_code} для {slug}: {r.text}")
             return 0
 
         data = r.json()
-
-        channel = data.get("channel")
-        if not channel:
-            print(f"Канал {slug} не найден или оффлайн")
-            return 0
-
-        stream = channel.get("stream")
-        # Проверяем, что стрим идёт
+        stream = data.get("stream")
         if not stream or not stream.get("is_live", False):
             return 0
 
         return stream.get("viewers", 0)
 
     except Exception as e:
-        print(f"Ошибка VK Live для {slug}: {e}")
+        print(f"Ошибка VK Live Dev API для {slug}: {e}")
         return 0
-
+        
 
 # ==========================
 # Универсальный API маршрут
@@ -292,7 +324,7 @@ def viewers():
     # VK Video Live
     # ======================
     elif platform == "vk":
-        viewers_count = get_vk_viewers(username)  # username = slug из URL
+        viewers_count = get_vk_viewers(username)  # username = slug из URL, например 'jove'
         cache[cache_key] = (now, viewers_count)
         return jsonify({"vk": viewers_count})
 
@@ -304,6 +336,7 @@ def viewers():
 # ==========================
 if __name__ == "__main__":
     start.run()
+
 
 
 
